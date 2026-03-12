@@ -1,6 +1,6 @@
 <?php
 // Simple Telegram OSINT Bot
-$botToken = 'YOUR BOT TOKEN';
+$botToken = '8348318598:AAFXCOUEqq7LuMZrstcZUL-NjzxPiZlPzK0';
 
 $WELCOME_TEXT = "╔══════════════════════════════════╗
 ║          PHONE LOOKUP            ║
@@ -9,7 +9,7 @@ $WELCOME_TEXT = "╔════════════════════
 ╚══════════════════════════════════╝";
 
 // Phone Number API
-$PHONE_API = 'API URL';
+$PHONE_API = 'https://ashuapi.ashupanel.online/numapi.php?action=api&key=sevenday&term=';
 
 // File to store user input states
 $USER_INPUT_STATES_FILE = 'user_input_states.json';

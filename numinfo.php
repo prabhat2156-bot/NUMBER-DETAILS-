@@ -9,7 +9,7 @@ $WELCOME_TEXT = "╔════════════════════
 ╚══════════════════════════════════╝";
 
 // Phone Number API
-$PHONE_API = 'https://ashuapi.ashupanel.online/numapi.php?action=api&key=sevenday&term=';
+$PHONE_API = 'https://ashuapi.ashupanel.online/api/gateway.php?key=sevenday&number=';
 
 // File to store user input states
 $USER_INPUT_STATES_FILE = 'user_input_states.json';

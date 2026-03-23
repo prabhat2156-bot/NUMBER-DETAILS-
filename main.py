@@ -1541,7 +1541,7 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ==================== 🌐 FLASK FILE MANAGER ====================
-flask_app = Flask(__name__)
+  flask_app = Flask(__name__)
 flask_app.secret_key = os.urandom(24)
 
 FILE_MANAGER_HTML = """
@@ -1552,7 +1552,7 @@ FILE_MANAGER_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        body { 
             font-family: 'Segoe UI', system-ui, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -1633,9 +1633,9 @@ FILE_MANAGER_HTML = """
             flex-shrink: 0;
         }
         .file-info { flex: 1; min-width: 0; }
-        .file-name {
-            font-weight: 600;
-            color: #333;
+        .file-name { 
+            font-weight: 600; 
+            color: #333; 
             margin-bottom: 4px;
             word-break: break-all;
         }
@@ -1650,9 +1650,9 @@ FILE_MANAGER_HTML = """
             gap: 8px;
             flex-wrap: wrap;
         }
-        .breadcrumb a {
-            color: #667eea;
-            text-decoration: none;
+        .breadcrumb a { 
+            color: #667eea; 
+            text-decoration: none; 
             padding: 4px 8px;
             border-radius: 4px;
             transition: background 0.2s;
@@ -1704,3 +1704,766 @@ FILE_MANAGER_HTML = """
         .empty-state-icon {
             font-size: 64px;
             margin-bottom: 20px;
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            background: rgba(102,126,234,0.05);
+        }
+        input[type="file"] { display: none; }
+        .file-input-label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.3);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 16px;
+        }
+        .modal-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        @media (max-width: 768px) {
+            .header { flex-direction: column; text-align: center; }
+            .file-item { flex-wrap: wrap; }
+            .file-actions { width: 100%; justify-content: flex-end; margin-top: 10px; }
+            .toolbar { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 {{ project_name }}</h1>
+            <div class="expire">⏱️ Expires in: {{ time_left }}</div>
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ 'flash-error' if category == 'error' else '' }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="breadcrumb">
+            <span>📂</span>
+            <a href="?session={{ session_id }}">Root</a>
+            {% for part in path_parts %}
+                <span>/</span>
+                {% if loop.last %}
+                    <span style="color: #666;">{{ part.name }}</span>
+                {% else %}
+                    <a href="?session={{ session_id }}&path={{ part.path }}">{{ part.name }}</a>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+        <div class="toolbar">
+            <a href="?session={{ session_id }}&action=upload&path={{ current_path }}" class="btn btn-success">📤 Upload</a>
+            <a href="#" onclick="showModal('file')" class="btn btn-primary">📄 New File</a>
+            <a href="#" onclick="showModal('folder')" class="btn btn-primary">📁 New Folder</a>
+        </div>
+        
+        <div class="content">
+            {% if not items and not current_path %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3>Empty Project</h3>
+                    <p>Upload files to get started</p>
+                </div>
+            {% else %}
+                <ul class="file-list">
+                    {% if current_path %}
+                    <li class="file-item">
+                        <div class="file-icon">⬆️</div>
+                        <div class="file-info">
+                            <a href="?session={{ session_id }}&path={{ parent_path }}" style="text-decoration: none; color: #667eea; font-weight: 600;">
+                                .. (Parent Directory)
+                            </a>
+                        </div>
+                    </li>
+                    {% endif %}
+                    
+                    {% for item in items %}
+                    <li class="file-item">
+                        <div class="file-icon">{{ item.icon }}</div>
+                        <div class="file-info">
+                            <div class="file-name">
+                                {% if item.is_dir %}
+                                    <a href="?session={{ session_id }}&path={{ item.path }}" style="text-decoration: none; color: #333;">
+                                        {{ item.name }}/
+                                    </a>
+                                {% else %}
+                                    {{ item.name }}
+                                {% endif %}
+                            </div>
+                            <div class="file-meta">{{ item.size }} • Modified: {{ item.modified }}</div>
+                        </div>
+                        <div class="file-actions">
+                            {% if not item.is_dir %}
+                            <a href="?session={{ session_id }}&action=edit&file={{ item.path }}" class="btn btn-primary" title="Edit">✏️</a>
+                            <a href="?session={{ session_id }}&action=download&file={{ item.path }}" class="btn btn-success" title="Download">⬇️</a>
+                            {% endif %}
+                            <a href="?session={{ session_id }}&action=rename&path={{ item.path }}" class="btn btn-warning" title="Rename">✏️ Rename</a>
+                            <a href="?session={{ session_id }}&action=delete&path={{ item.path }}" class="btn btn-danger" title="Delete" onclick="return confirm('Are you sure you want to delete {{ item.name }}?')">🗑️</a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Modal for new file/folder -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <h3 id="modal-title">Create New</h3>
+            <form id="modal-form" method="get" action="">
+                <input type="hidden" name="session" value="{{ session_id }}">
+                <input type="hidden" name="path" value="{{ current_path }}">
+                <input type="text" name="name" class="modal-input" placeholder="Enter name..." required autofocus>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" onclick="hideModal()" class="btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function showModal(type) {
+            const modal = document.getElementById('modal');
+            const title = document.getElementById('modal-title');
+            const form = document.getElementById('modal-form');
+            
+            if (type === 'file') {
+                title.textContent = '📄 Create New File';
+                form.action = '?action=newfile';
+            } else {
+                title.textContent = '📁 Create New Folder';
+                form.action = '?action=newfolder';
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function hideModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+        
+        // Close modal on outside click
+        document.getElementById('modal').addEventListener('click', function(e) {
+            if (e.target === this) hideModal();
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') hideModal();
+        });
+    </script>
+</body>
+</html>
+"""
+
+@flask_app.route('/filemanager/<session_id>', methods=['GET', 'POST'])
+def file_manager(session_id):
+    # Validate session
+    if session_id not in file_manager_sessions:
+        return "⛔ Invalid or expired session!", 403
+    
+    session = file_manager_sessions[session_id]
+    if datetime.now() > session['expiry']:
+        del file_manager_sessions[session_id]
+        return "⏱️ Session expired! Generate new link from bot.", 403
+    
+    action = request.args.get('action', 'list')
+    current_path = request.args.get('path', '')
+    base_dir = Path(session['project_dir'])
+    full_path = base_dir / current_path if current_path else base_dir
+    
+    # Security check
+    try:
+        full_path.relative_to(base_dir)
+    except ValueError:
+        flash("Access denied!", "error")
+        return redirect(f'?session={session_id}')
+    
+    # Handle actions
+    if action == 'upload':
+        if request.method == 'POST':
+            if 'file' not in request.files:
+                flash("No file selected!", "error")
+                return redirect(f'?session={session_id}&path={current_path}')
+            
+            file = request.files['file']
+            if not file.filename:
+                flash("No file selected!", "error")
+                return redirect(f'?session={session_id}&path={current_path}')
+            
+            # Security check filename
+            filename = os.path.basename(file.filename)
+            if filename.startswith('.') or '..' in filename:
+                flash("Invalid filename!", "error")
+                return redirect(f'?session={session_id}&path={current_path}')
+            
+            save_path = full_path / filename
+            file.save(str(save_path))
+            flash(f"📤 Uploaded: {filename}")
+            return redirect(f'?session={session_id}&path={current_path}')
+        
+        # Upload form
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Upload File</title>
+            <style>
+                body {{ 
+                    font-family: 'Segoe UI', sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0;
+                }}
+                .container {{
+                    background: white;
+                    padding: 40px;
+                    border-radius: 20px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    text-align: center;
+                    max-width: 400px;
+                    width: 90%;
+                }}
+                h2 {{ color: #333; margin-bottom: 10px; }}
+                p {{ color: #666; margin-bottom: 30px; }}
+                .upload-btn {{
+                    display: inline-block;
+                    padding: 15px 40px;
+                    background: #667eea;
+                    color: white;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    font-weight: 500;
+                    transition: all 0.3s;
+                }}
+                .upload-btn:hover {{ transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,0.3); }}
+                input[type="file"] {{ display: none; }}
+                .file-name {{ margin: 20px 0; color: #667eea; font-weight: 500; min-height: 24px; }}
+                button[type="submit"] {{
+                    padding: 12px 30px;
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-size: 16px;
+                    font-weight: 500;
+                    width: 100%;
+                    display: none;
+                }}
+                button[type="submit"].active {{ display: block; }}
+                .back-link {{
+                    display: inline-block;
+                    margin-top: 20px;
+                    color: #667eea;
+                    text-decoration: none;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>📤 Upload File</h2>
+                <p>Select a file to upload to:<br><code>{current_path or 'Root'}</code></p>
+                <form method="POST" enctype="multipart/form-data">
+                    <label class="upload-btn">
+                        <input type="file" name="file" onchange="document.getElementById('file-name').textContent = this.files[0].name; document.getElementById('submit-btn').classList.add('active');" required>
+                        Choose File
+                    </label>
+                    <div id="file-name" class="file-name"></div>
+                    <button type="submit" id="submit-btn">🚀 Upload Now</button>
+                </form>
+                <a href="?session={session_id}&path={current_path}" class="back-link">← Back to files</a>
+            </div>
+        </body>
+        </html>
+        """
+    
+    elif action == 'newfile':
+        name = request.args.get('name', 'new_file.py')
+        if name:
+            (full_path / name).touch()
+            flash(f"📄 Created file: {name}")
+        return redirect(f'?session={session_id}&path={current_path}')
+    
+    elif action == 'newfolder':
+        name = request.args.get('name', 'new_folder')
+        if name:
+            (full_path / name).mkdir(exist_ok=True)
+            flash(f"📁 Created folder: {name}")
+        return redirect(f'?session={session_id}&path={current_path}')
+    
+    elif action == 'delete':
+        target = request.args.get('path')
+        if target:
+            target_path = base_dir / target
+            try:
+                target_path.relative_to(base_dir)  # Security check
+                if target_path.is_dir():
+                    shutil.rmtree(target_path)
+                else:
+                    target_path.unlink()
+                flash(f"🗑️ Deleted: {target_path.name}")
+            except Exception as e:
+                flash(f"Error: {str(e)}", "error")
+        return redirect(f'?session={session_id}&path={current_path}')
+    
+    elif action == 'rename':
+        old_name = request.args.get('path')
+        new_name = request.args.get('name')
+        
+        if old_name and new_name:
+            old_path = base_dir / old_name
+            new_path = old_path.parent / new_name
+            try:
+                old_path.rename(new_path)
+                flash(f"✏️ Renamed to: {new_name}")
+            except Exception as e:
+                flash(f"Error: {str(e)}", "error")
+            return redirect(f'?session={session_id}&path={current_path}')
+        
+        # Show rename form
+        old_path = base_dir / old_name if old_name else base_dir
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Rename</title>
+            <style>
+                body {{ 
+                    font-family: 'Segoe UI', sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0;
+                }}
+                .container {{
+                    background: white;
+                    padding: 40px;
+                    border-radius: 20px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    max-width: 400px;
+                    width: 90%;
+                }}
+                h2 {{ color: #333; margin-bottom: 20px; }}
+                input[type="text"] {{
+                    width: 100%;
+                    padding: 12px;
+                    border: 2px solid #e9ecef;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    margin-bottom: 20px;
+                }}
+                input[type="text"]:focus {{
+                    outline: none;
+                    border-color: #667eea;
+                }}
+                .btn {{
+                    padding: 12px 30px;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-size: 16px;
+                    font-weight: 500;
+                    width: 100%;
+                }}
+                .btn-primary {{ background: #667eea; color: white; }}
+                .btn-secondary {{ background: #6c757d; color: white; margin-top: 10px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>✏️ Rename</h2>
+                <form method="get">
+                    <input type="hidden" name="session" value="{session_id}">
+                    <input type="hidden" name="action" value="rename">
+                    <input type="hidden" name="path" value="{old_name}">
+                    <input type="text" name="name" value="{old_path.name if old_name else ''}" placeholder="New name" required autofocus>
+                    <button type="submit" class="btn btn-primary">Rename</button>
+                    <a href="?session={session_id}&path={current_path}" style="text-decoration: none;">
+                        <button type="button" class="btn btn-secondary">Cancel</button>
+                    </a>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+    
+    elif action == 'edit':
+        file_path = request.args.get('file')
+        if not file_path:
+            flash("No file specified!", "error")
+            return redirect(f'?session={session_id}&path={current_path}')
+        
+        full_file_path = base_dir / file_path
+        
+        if request.method == 'POST':
+            content = request.form.get('content', '')
+            try:
+                full_file_path.write_text(content, encoding='utf-8')
+                flash(f"💾 Saved: {full_file_path.name}")
+            except Exception as e:
+                flash(f"Error saving: {str(e)}", "error")
+            return redirect(f'?session={session_id}&path={current_path}')
+        
+        # Show editor
+        try:
+            content = full_file_path.read_text(encoding='utf-8')
+        except Exception as e:
+            content = f"# Error reading file: {str(e)}"
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Edit {full_file_path.name}</title>
+            <style>
+                body {{ 
+                    margin: 0;
+                    font-family: 'Segoe UI', sans-serif;
+                    background: #1e1e1e;
+                    color: #d4d4d4;
+                }}
+                .header {{
+                    background: #252526;
+                    padding: 15px 30px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-bottom: 1px solid #333;
+                }}
+                .header h2 {{
+                    margin: 0;
+                    font-size: 18px;
+                    color: #fff;
+                    font-weight: 500;
+                }}
+                .btn {{
+                    padding: 8px 20px;
+                    background: #0e639c;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                }}
+                .btn:hover {{ background: #1177bb; }}
+                .editor-container {{
+                    padding: 20px;
+                }}
+                textarea {{
+                    width: 100%;
+                    height: calc(100vh - 120px);
+                    background: #1e1e1e;
+                    color: #d4d4d4;
+                    border: 1px solid #333;
+                    border-radius: 4px;
+                    padding: 15px;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    resize: none;
+                    tab-size: 4;
+                }}
+                textarea:focus {{
+                    outline: none;
+                    border-color: #0e639c;
+                }}
+                .status-bar {{
+                    background: #007acc;
+                    color: white;
+                    padding: 5px 20px;
+                    font-size: 12px;
+                    position: fixed;
+                    bottom: 0;
+                    width: 100%;
+                }}
+            </style>
+        </head>
+        <body>
+            <form method="POST">
+                <div class="header">
+                    <h2>✏️ {full_file_path.name}</h2>
+                    <div>
+                        <button type="submit" class="btn">💾 Save (Ctrl+S)</button>
+                        <a href="?session={session_id}&path={current_path}" style="text-decoration: none; margin-left: 10px;">
+                            <button type="button" class="btn" style="background: #6c757d;">Cancel</button>
+                        </a>
+                    </div>
+                </div>
+                <div class="editor-container">
+                    <textarea name="content" id="editor" spellcheck="false">{content}</textarea>
+                </div>
+                <div class="status-bar">UTF-8 | Python | Line 1, Col 1</div>
+            </form>
+            <script>
+                document.getElementById('editor').addEventListener('keydown', function(e) {{
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {{
+                        e.preventDefault();
+                        this.form.submit();
+                    }}
+                    if (e.key === 'Tab') {{
+                        e.preventDefault();
+                        var start = this.selectionStart;
+                        var end = this.selectionEnd;
+                        this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+                        this.selectionStart = this.selectionEnd = start + 4;
+                    }}
+                }});
+            </script>
+        </body>
+        </html>
+        """
+    
+    elif action == 'download':
+        file_path = request.args.get('file')
+        if file_path:
+            full_file_path = base_dir / file_path
+            if full_file_path.exists() and full_file_path.is_file():
+                return send_file(str(full_file_path), as_attachment=True)
+        flash("File not found!", "error")
+        return redirect(f'?session={session_id}&path={current_path}')
+    
+    # List directory (default action)
+    items = []
+    try:
+        for item in sorted(full_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            try:
+                stat = item.stat()
+                size = f"{stat.st_size / 1024:.1f} KB" if item.is_file() else "--"
+                modified = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')
+                
+                # Determine icon
+                if item.is_dir():
+                    icon = "📁"
+                elif item.suffix == '.py':
+                    icon = "🐍"
+                elif item.name == 'requirements.txt':
+                    icon = "📦"
+                elif item.suffix in ['.txt', '.md']:
+                    icon = "📝"
+                elif item.suffix in ['.json', '.yml', '.yaml']:
+                    icon = "⚙️"
+                elif item.suffix in ['.zip', '.tar', '.gz']:
+                    icon = "🗜️"
+                elif item.suffix in ['.jpg', '.png', '.gif', '.svg']:
+                    icon = "🖼️"
+                else:
+                    icon = "📄"
+                
+                rel_path = str(item.relative_to(base_dir))
+                
+                items.append({
+                    'name': item.name,
+                    'is_dir': item.is_dir(),
+                    'size': size,
+                    'modified': modified,
+                    'icon': icon,
+                    'path': rel_path
+                })
+            except:
+                continue
+    except Exception as e:
+        flash(f"Error reading directory: {str(e)}", "error")
+    
+    # Calculate time left
+    time_left = session['expiry'] - datetime.now()
+    minutes = max(0, int(time_left.total_seconds() / 60))
+    
+    # Build path parts for breadcrumb
+    path_parts = []
+    if current_path:
+        parts = current_path.replace('\\', '/').split('/')
+        accumulated = ''
+        for part in parts:
+            if part:
+                accumulated = accumulated + '/' + part if accumulated else part
+                path_parts.append({'name': part, 'path': accumulated})
+    
+    parent_path = '/'.join(current_path.replace('\\', '/').split('/')[:-1]) if current_path else ''
+    
+    # Get project name
+    project = projects_collection.find_one({"project_id": session['project_id']})
+    project_name = project['project_name'] if project else "Unknown"
+    
+    return render_template_string(FILE_MANAGER_HTML,
+                                project_name=project_name,
+                                items=items,
+                                current_path=current_path,
+                                parent_path=parent_path,
+                                path_parts=path_parts,
+                                session_id=session_id,
+                                time_left=f"{minutes} minutes")
+
+@flask_app.route('/')
+def home():
+    return """
+    <html>
+    <head>
+        <title>God Madara Bot</title>
+        <style>
+            body { 
+                font-family: 'Segoe UI', sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0;
+                color: white;
+            }
+            .container { text-align: center; }
+            h1 { font-size: 48px; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+            p { font-size: 18px; opacity: 0.9; }
+            .status { 
+                margin-top: 30px; 
+                padding: 15px 30px; 
+                background: rgba(255,255,255,0.2); 
+                border-radius: 30px;
+                display: inline-block;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔥 God Madara Bot</h1>
+            <p>Advanced Python Project Hosting Platform</p>
+            <div class="status">🟢 System Online</div>
+        </div>
+    </body>
+    </html>
+    """
+
+# ==================== 🚀 MAIN APPLICATION ====================
+def run_flask():
+    """Run Flask in separate thread"""
+    print("🌐 Starting File Manager Web Server...")
+    flask_app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=False, threaded=True)
+
+def main():
+    print("═══════════════════════════════════════")
+    print("   🔥 GOD MADARA HOSTING BOT v3.0 🔥")
+    print("═══════════════════════════════════════")
+    
+    # Restore from backup
+    print("🔄 Checking for backups...")
+    restore_from_backup()
+    
+    # Start Flask in background thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Setup Telegram bot
+    print("🤖 Starting Telegram Bot...")
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Conversation: Create Project
+    create_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button_handler, pattern="^new_project$")],
+        states={
+            WAITING_PROJECT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_project_name)],
+            WAITING_FILES: [
+                MessageHandler(filters.Document.ALL, receive_file),
+                CommandHandler("done", done_upload)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_handler)],
+        per_message=False
+    )
+    
+    # Conversation: Edit Command
+    edit_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button_handler, pattern="^edit_cmd_")],
+        states={
+            WAITING_RUN_COMMAND: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_run_command)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_handler)],
+        per_message=False
+    )
+    
+    # Conversation: Admin Actions
+    admin_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(button_handler, pattern="^admin_(give_premium|remove_premium|ban|unban|temp_premium|download)$")
+        ],
+        states={
+            ADMIN_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_user_id)],
+            ADMIN_PREMIUM_DAYS: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_premium_days)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_handler)],
+        per_message=False
+    )
+    
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(create_conv)
+    application.add_handler(edit_conv)
+    application.add_handler(admin_conv)
+    application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Start backup task
+    asyncio.create_task(backup_system())
+    
+    print("✅ Bot is running! Press Ctrl+C to stop.")
+    print("═══════════════════════════════════════")
+    
+    # Run
+    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()

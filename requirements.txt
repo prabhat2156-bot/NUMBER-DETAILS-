@@ -4,3 +4,5 @@ pymongo==4.6.0
 psutil==5.9.6
 werkzeug==3.0.1
 gunicorn==21.2.0
+pymongo[srv]
+dnspython

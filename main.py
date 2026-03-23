@@ -17,9 +17,9 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 
 # Configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with your bot token
-OWNER_ID = 123456789  # Replace with your Telegram ID
-MONGO_URI = "mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"  # Replace with your MongoDB URI
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = os.getenv("OWNER_ID")
+MONGO_URI = os.getenv("MONGO_URI")
 
 # Database Setup
 client = MongoClient(MONGO_URI)

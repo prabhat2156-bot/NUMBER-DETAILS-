@@ -566,7 +566,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Update activity
     update_activity(user_id)
    
-    # Main Menu
+    #     # Main Menu
     if data == "main_menu":
         await query.edit_message_text(
             "🏠 **Main Menu**\n\nChoose what you want to do:",
@@ -574,9 +574,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard(user_id)
         )
         return
-   
+    
     # New Project
- elif data == "new_project":
+    elif data == "new_project":
         can_create, error = can_create_project(user_id)
         if not can_create:
             await query.edit_message_text(

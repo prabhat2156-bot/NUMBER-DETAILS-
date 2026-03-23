@@ -577,7 +577,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # New Project
     elif data == "new_project":
-        can_create, error = can_create_project(user_id)
+         can_create, error = can_create_project(user_id)
         if not can_create:
             await query.edit_message_text(
                 f"❌ **Error**\n\n{error}",

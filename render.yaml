@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: god-madara-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        value: your_bot_token_here
+      - key: MONGO_URI
+        value: your_mongodb_uri_here
+      - key: OWNER_ID
+        value: your_telegram_id_here
+      - key: PYTHON_VERSION
+        value: 3.11.0

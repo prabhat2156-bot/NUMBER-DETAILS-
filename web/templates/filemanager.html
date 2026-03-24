@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Manager — {{ project_name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', monospace; }
+  header { background: #1a1a2e; padding: 16px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #e94560; }
+  header h1 { font-size: 1.2rem; color: #e94560; }
+  header span { color: #888; font-size: 0.9rem; }
+  .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: 0.2s; }
+  .btn-primary { background: #e94560; color: #fff; }
+  .btn-primary:hover { background: #c73652; }
+  .btn-secondary { background: #1f1f3a; color: #aaa; border: 1px solid #333; }
+  .btn-secondary:hover { background: #2a2a50; color: #fff; }
+  .btn-danger { background: #c0392b; color: #fff; }
+  .btn-danger:hover { background: #a93226; }
+  .path-bar { background: #1a1a2e; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: #888; }
+  .path-bar a { color: #e94560; text-decoration: none; }
+  table { width: 100%; border-collapse: collapse; background: #141414; border-radius: 10px; overflow: hidden; }
+  th { background: #1a1a2e; padding: 12px 16px; text-align: left; font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  td { padding: 10px 16px; border-bottom: 1px solid #222; font-size: 0.9rem; }
+  tr:hover { background: #1f1f2e; }
+  .icon { font-size: 1.1rem; margin-right: 8px; }
+  .actions a, .actions button { margin-right: 6px; color: #888; background: none; border: none; cursor: pointer; font-size: 0.8rem; text-decoration: none; }
+  .actions a:hover, .actions button:hover { color: #e94560; }
+  .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+  .modal.active { display: flex; }
+  .modal-box { background: #1a1a2e; border: 1px solid #333; padding: 24px; border-radius: 12px; min-width: 320px; }
+  .modal-box h3 { margin-bottom: 16px; color: #e94560; }
+  .modal-box input, .modal-box select { width: 100%; padding: 10px; background: #0d0d0d; border: 1px solid #333; color: #e0e0e0; border-radius: 6px; margin-bottom: 12px; }
+  .editor-area { width: 100%; min-height: 70vh; background: #0d0d0d; border: 1px solid #333; color: #00ff88; padding: 16px; font-family: monospace; font-size: 0.9rem; border-radius: 8px; resize: vertical; }
+  .upload-form { background: #141414; border: 2px dashed #333; padding: 20px; border-radius: 10px; margin-bottom: 16px; text-align: center; }
+  .upload-form:hover { border-color: #e94560; }
+  .size-badge { color: #555; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ God Madara File Manager</h1>
+  <span>📁 {{ project_name }}</span>
+</header>
+
+<div class="container">
+
+{% if edit_mode %}
+<!-- ── Edit Mode ── -->
+<h2 style="margin-bottom:12px; color:#e94560;">✏️ Editing: {{ edit_path }}</h2>
+<form method="POST">
+  <input type="hidden" name="path" value="{{ edit_path }}">
+  <textarea class="editor-area" name="content">{{ edit_content }}</textarea>
+  <div style="margin-top:12px; display:flex; gap:10px;">
+    <button type="submit" class="btn btn-primary">💾 Save</button>
+    <a href="javascript:history.back()" class="btn btn-secondary">❌ Cancel</a>
+  </div>
+</form>
+
+{% else %}
+<!-- ── File Browser ── -->
+<div class="path-bar">
+  📂 Path: <a href="/fm/{{ token }}">root</a>
+  {% if current_rel %}/ {{ current_rel }}{% endif %}
+  {% if parent_rel is not none and current_rel %}
+    &nbsp;|&nbsp; <a href="/fm/{{ token }}?path={{ parent_rel }}">⬆️ Go Up</a>
+  {% endif %}
+</div>
+
+<!-- Upload -->
+<div class="upload-form">
+  <form method="POST" action="/fm/{{ token }}/upload" enctype="multipart/form-data">
+    <input type="hidden" name="path" value="{{ current_rel }}">
+    <input type="file" name="files" multiple style="color:#e0e0e0;">
+    <br><br>
+    <button type="submit" class="btn btn-primary">📤 Upload Files</button>
+  </form>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="btn btn-secondary" onclick="document.getElementById('modal-create-file').classList.add('active')">➕ New File</button>
+  <button class="btn btn-secondary" onclick="document.getElementById('modal-create-folder').classList.add('active')">📁 New Folder</button>
+</div>
+
+<!-- File Table -->
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Size</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>
+        {% if item.is_dir %}
+          <span class="icon">📁</span>
+          <a href="/fm/{{ token }}?path={{ item.rel_path }}" style="color:#7ec8e3; text-decoration:none;">{{ item.name }}</a>
+        {% else %}
+          <span class="icon">📄</span>{{ item.name }}
+        {% endif %}
+      </td>
+      <td class="size-badge">{{ item.size if not item.is_dir else '—' }}</td>
+      <td class="actions">
+        {% if not item.is_dir %}
+          <a href="/fm/{{ token }}/edit?path={{ item.rel_path }}">✏️ Edit</a>
+          <a href="/fm/{{ token }}/download?path={{ item.rel_path }}">⬇️ Download</a>
+        {% endif %}
+        <button onclick="renameItem('{{ item.rel_path }}', '{{ item.name }}')">✏️ Rename</button>
+        <form method="POST" action="/fm/{{ token }}/delete" style="display:inline"
+              onsubmit="return confirm('Delete {{ item.name }}?')">
+          <input type="hidden" name="item_path" value="{{ item.rel_path }}">
+          <button type="submit" class="btn-danger" style="padding:2px 8px;border-radius:4px;">🗑</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" style="text-align:center; color:#555; padding:24px;">📭 Empty directory</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+</div>
+
+<!-- ── Modals ── -->
+<div class="modal" id="modal-create-file">
+  <div class="modal-box">
+    <h3>➕ Create New File</h3>
+    <form method="POST" action="/fm/{{ token }}/create">
+      <input type="hidden" name="path" value="{{ current_rel }}">
+      <input type="hidden" name="type" value="file">
+      <input type="text" name="name" placeholder="filename.py" required>
+      <button type="submit" class="btn btn-primary">Create</button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-create-file').classList.remove('active')">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-create-folder">
+  <div class="modal-box">
+    <h3>📁 Create New Folder</h3>
+    <form method="POST" action="/fm/{{ token }}/create">
+      <input type="hidden" name="path" value="{{ current_rel }}">
+      <input type="hidden" name="type" value="folder">
+      <input type="text" name="name" placeholder="folder_name" required>
+      <button type="submit" class="btn btn-primary">Create</button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-create-folder').classList.remove('active')">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-rename">
+  <div class="modal-box">
+    <h3>✏️ Rename</h3>
+    <form method="POST" action="/fm/{{ token }}/rename">
+      <input type="hidden" name="old_path" id="rename-old-path">
+      <input type="text" name="new_name" id="rename-new-name" placeholder="new name" required>
+      <button type="submit" class="btn btn-primary">Rename</button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-rename').classList.remove('active')">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<script>
+function renameItem(path, name) {
+  document.getElementById('rename-old-path').value = path;
+  document.getElementById('rename-new-name').value = name;
+  document.getElementById('modal-rename').classList.add('active');
+}
+window.addEventListener('click', function(e) {
+  document.querySelectorAll('.modal').forEach(m => {
+    if (e.target === m) m.classList.remove('active');
+  });
+});
+</script>
+</body>
+  </html>
+  

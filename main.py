@@ -23,7 +23,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "7727685861:AAGPwa_pzXugCDMDEJA_Ic9S7-tBKtaipJE"
+TOKEN = "7727685861:AAGPwa_pzXugCDMDEJA_Ic9S7-tBKtaipJE"
 OWNER_ID = 7640327597
 ADMIN_ID = 7640327597
 YOUR_USERNAME = "@moonspire1"

@@ -1,0 +1,249 @@
+# God Madara Hosting Bot
+
+A production-ready Telegram bot for hosting Python projects 24/7, featuring a web-based file manager, MongoDB persistence with GridFS backup/restore, admin panel, and Premium membership system.
+
+---
+
+## 📁 File Structure
+
+```
+.
+├── bot.py              # Main Telegram bot — ALL logic in one file (async, PTB v20+)
+├── file_manager.py     # Flask web file manager (runs as a separate service)
+├── requirements.txt    # Python dependencies
+├── .env.example        # Environment variable template
+├── .env                # Your actual config (NEVER commit this)
+├── projects/           # Auto-created: user project files (ephemeral on Render free)
+├── logs/               # Auto-created: project stdout/stderr logs
+└── fm_tokens/          # Auto-created: temporary 1-hour file manager tokens
+```
+
+---
+
+## ✨ Features
+
+| Feature | Free | Premium |
+|---|---|---|
+| Projects | 1 | 10 |
+| 24/7 hosting | ✅ | ✅ |
+| Web File Manager | ✅ (1hr session) | ✅ (1hr session) |
+| Auto requirements install | ✅ | ✅ |
+| Real-time logs | ✅ | ✅ |
+| Auto-backup to GridFS | ✅ | ✅ |
+| Auto-restore on restart | ✅ | ✅ |
+| Admin controls | Owner only | Owner only |
+
+---
+
+## 💾 Backup & Restore System
+
+### How It Works
+
+The bot uses **MongoDB GridFS** to store all project files in the cloud. This solves the main problem with Render's free plan: the filesystem is **ephemeral** — all local files are lost on every restart/redeploy.
+
+### Backup Flow
+1. **On file upload** (`np_got_file`): Each file is immediately backed up to GridFS with MD5 fingerprinting.
+2. **On project creation** (`np_done_upload`): After ZIP extraction, all project files are backed up.
+3. **On File Manager open** (`fm_project_cb`): A background backup runs automatically.
+4. **Every 10 minutes** (`auto_backup_loop`): All projects are scanned; only changed files (by MD5) are uploaded.
+5. **Admin Force Backup**: Owner can trigger an immediate full backup from the admin panel.
+
+### Restore Flow (on every bot startup)
+1. `restore_all_projects()` reads all projects from MongoDB
+2. Recreates the `/projects/` directory structure on disk
+3. Downloads every file from GridFS to disk
+4. `auto_restart_running_projects()` then restarts any project that had `status: "running"`
+
+### Smart Deduplication
+- Files are only uploaded if their MD5 hash has changed
+- Old versions are deleted before uploading new ones
+- Skips `__pycache__`, `.git`, `node_modules`, `venv`, `.env` directories
+
+### Process Watcher
+- Runs every 60 seconds in the background
+- Detects crashed processes and marks them `stopped`
+- If a project has `auto_restart: true`, it automatically relaunches the process
+
+---
+
+## 🚀 Deploying to Render
+
+### Prerequisites
+- [Render account](https://render.com)
+- [MongoDB Atlas free cluster](https://www.mongodb.com/cloud/atlas)
+- Telegram bot token from [@BotFather](https://t.me/BotFather)
+
+---
+
+### Step 1 — Create MongoDB Atlas Database
+
+1. Sign up at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. Create a **free M0 cluster** (any region)
+3. Create a database user: **Database Access → Add New User** (username + password)
+4. Whitelist all IPs: **Network Access → Add IP Address → Allow Access from Anywhere** (`0.0.0.0/0`)
+5. Copy the connection string: `mongodb+srv://user:pass@cluster.mongodb.net/madara_hosting`
+
+> **Important:** The bot uses GridFS for file storage. GridFS requires no special setup — it automatically creates `fs.files` and `fs.chunks` collections in your database.
+
+---
+
+### Step 2 — Deploy on Render (Two Services — Recommended)
+
+#### Service 1: Bot Worker (Background Worker)
+
+1. Render Dashboard → **New → Background Worker**
+2. Connect your GitHub repo
+3. **Build Command:** `pip install -r requirements.txt`
+4. **Start Command:** `python bot.py`
+5. Add environment variables (see Step 3)
+
+#### Service 2: File Manager (Web Service)
+
+1. Render Dashboard → **New → Web Service**
+2. Same GitHub repo
+3. **Build Command:** `pip install -r requirements.txt`
+4. **Start Command:** `python file_manager.py`
+5. **Port:** `8080`
+6. Copy the public URL (e.g., `https://madara-fm.onrender.com`)
+7. Set this URL as `FILE_MANAGER_URL` in the **Bot Worker's** environment variables
+
+#### Alternative: Single Service with Procfile
+
+Create a `Procfile` in the repo root:
+```
+web: python file_manager.py & python bot.py
+```
+Or set **Start Command** to:
+```sh
+python file_manager.py & python bot.py
+```
+
+---
+
+### Step 3 — Environment Variables
+
+Set these in **Render → your service → Environment**:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `BOT_TOKEN` | `7123456789:AAF...` | From @BotFather |
+| `OWNER_ID` | `123456789` | Your Telegram numeric ID |
+| `MONGODB_URI` | `mongodb+srv://...` | Atlas connection string |
+| `FILE_MANAGER_PORT` | `8080` | Flask server port |
+| `FILE_MANAGER_URL` | `https://your-fm.onrender.com` | Public URL of FM service |
+| `FM_SECRET` | `any-random-string` | Flask session secret |
+| `PROJECTS_DIR` | `projects` | Local projects folder |
+| `LOGS_DIR` | `logs` | Local logs folder |
+
+---
+
+### Step 4 — Bot Commands
+
+The bot automatically sets commands on startup via `post_init`. No manual action required.
+
+---
+
+## 🔧 Local Development
+
+```bash
+# 1. Clone and install
+git clone https://github.com/you/madara-bot
+cd madara-bot
+pip install -r requirements.txt
+
+# 2. Configure
+cp .env.example .env
+# Edit .env with your actual values
+
+# 3. Run file manager (terminal 1)
+python file_manager.py
+
+# 4. Run bot (terminal 2)
+python bot.py
+```
+
+---
+
+## 🤖 Bot Commands
+
+| Command | Description |
+|---|---|
+| `/start` | Open main menu |
+| `/admin` | Admin panel (owner only) |
+| `/cancel` | Cancel current multi-step operation |
+
+---
+
+## 🛠️ Admin Panel
+
+Access via `/admin` — owner only.
+
+- **All Users** — Paginated user list with detail view
+- **Running Scripts** — See all active projects across users, stop any
+- **Give/Remove Premium** — Manage user plans permanently
+- **Temp Premium** — Time-limited premium (auto-expires)
+- **Ban/Unban** — Block users from using the bot
+- **Broadcast** — Send messages to all users or a specific user
+- **Force Backup** — Immediately backup all projects to GridFS
+- **Backup Stats** — View GridFS usage (files, size, last backup time)
+
+---
+
+## 📂 File Manager
+
+- Token-based access (1-hour sessions generated per project)
+- Browse, create, edit, rename, delete files and folders
+- Upload multiple files at once via drag-and-drop or button
+- Syntax highlighting for code files
+- ZIP auto-extraction on project creation
+- Dark-themed UI with mobile responsive layout
+- Tab key support in the code editor
+- Path traversal attack prevention
+
+---
+
+## 🔒 Security Notes
+
+- Never commit `.env` to git — add it to `.gitignore`
+- Use a strong random string for `FM_SECRET`
+- File manager uses path traversal prevention (`safe_path()`)
+- File manager tokens expire after 1 hour
+- Only the owner (set by `OWNER_ID`) can access the admin panel
+- Ban system prevents abusive users from interacting with the bot
+
+---
+
+## 🐛 Troubleshooting
+
+**Bot doesn't respond:**
+- Verify `BOT_TOKEN` is correct in Render environment
+- Check Render logs for Python errors
+
+**MongoDB connection fails:**
+- Ensure `0.0.0.0/0` is whitelisted in Atlas Network Access
+- Double-check URI format and credentials
+- Check if your Atlas cluster is paused (free clusters pause after inactivity)
+
+**File manager shows 403:**
+- Token may have expired — generate a new link from the bot
+- Verify `PROJECTS_DIR` path is consistent between bot and file manager services
+
+**Projects lost after Render restart:**
+- This is expected on Render's free plan (ephemeral filesystem)
+- The bot automatically restores all project files from GridFS on startup
+- Check bot logs for `restore_all_projects` output
+
+**GridFS backup not working:**
+- Confirm `MONGODB_URI` is set correctly
+- Check bot logs for `backup_single_file` or `backup_project_files` errors
+- Ensure your MongoDB Atlas cluster has enough free storage (512 MB on M0)
+
+**Process watcher not restarting crashed projects:**
+- Set `auto_restart: true` on the project document in MongoDB to enable auto-restart
+- Check bot logs for `process_watcher` entries
+
+---
+
+## 📝 License
+
+MIT — free to use, modify, and deploy.

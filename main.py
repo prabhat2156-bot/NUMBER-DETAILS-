@@ -2096,11 +2096,18 @@ EDITOR_TEMPLATE = BASE_TEMPLATE.replace("{% block content %}{% endblock %}", """
   </div>
   <textarea id="code-editor" spellcheck="false">{{ content }}</textarea>
 </div>
-{% endblock %}
+{% endblock %}""").replace("{% block modals %}{% endblock %}", "").replace("{% block scripts %}{% endblock %}", """
 {% block scripts %}
 <script>
 function saveFile() {
   const content = document.getElementById('code-editor').value;
+  fetch('{{ url_for("fm_save_file", token=token) }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ rel: '{{ rel }}', content: content })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      const btn = document.getElementById('code-editor').value;
   fetch('{{ url_for("fm_save_file", token=token) }}', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -2113,7 +2120,6 @@ function saveFile() {
     } else { alert('Save failed: ' + d.error); }
   });
 }
-// Tab support in textarea
 document.getElementById('code-editor').addEventListener('keydown', function(e) {
   if (e.key === 'Tab') {
     e.preventDefault();

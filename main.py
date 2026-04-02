@@ -1,11 +1,3 @@
-# main.py — God Madara Hosting Bot (FINAL MERGED)
-# Combines: Telegram Bot (bot.py) + Web File Manager (file_manager.py)
-# Production-ready, async Python Telegram bot + Flask file manager in ONE file
-# Python 3.11+ | python-telegram-bot==21.3 | motor | Flask | psutil
-# Deploy directly to Render or any Python host.
-
-# ═══ IMPORTS ════════════════════════════════════════════════════════════════
-
 import asyncio
 import hashlib
 import io

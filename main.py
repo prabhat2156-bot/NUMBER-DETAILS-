@@ -1,11 +1,3 @@
-# ============================================================
-#  God Madara Hosting Bot — god_madara_bot.py
-#  Single-file production-ready Telegram bot + Flask web file manager
-#  Keep-alive health endpoint + file manager on the SAME PORT
-#  Runs on Render's free web plan (single process, single PORT)
-#  Uses: python-telegram-bot v20+, Motor (async MongoDB), Flask
-# ============================================================
-
 import asyncio
 import logging
 import os

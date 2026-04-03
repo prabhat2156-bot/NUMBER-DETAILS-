@@ -1,7 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-# FILE 2: file_manager.py
-# ═══════════════════════════════════════════════════════════════
-
 import os, time, mimetypes, json, shutil
 from pathlib import Path
 from flask import (

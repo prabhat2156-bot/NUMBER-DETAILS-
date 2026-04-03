@@ -1,11 +1,3 @@
-# ============================================================
-#  God Madara Hosting Bot — god_madara_bot.py
-#  FIXED VERSION — All 8 bugs resolved (including 2 new fixes)
-#  Single-file: Telegram bot + Flask keep-alive + Flask file manager
-#  Runs on Render free web plan (single process, single PORT)
-#  Uses: python-telegram-bot v20+, Motor (async MongoDB), Flask
-# ============================================================
-
 import asyncio
 import logging
 import os

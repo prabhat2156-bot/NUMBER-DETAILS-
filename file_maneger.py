@@ -457,5 +457,233 @@ async function doRename() {
     body: JSON.stringify({ old_path: oldPath, new_path: newPath })
   });
   if (!res) return;
+  
   const data = await res.json();
+  if (data.error) { setStatus('Rename error: ' + data.error); return; }
+  closeModal('rename-modal');
+  if (currentFile === oldPath) { currentFile = newPath; document.getElementById('current-file-name').textContent = newPath; }
+  setStatus('Renamed to: ' + newName);
+  refreshFiles();
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
+});
+
+window.onclick = e => {
+  document.querySelectorAll('.modal').forEach(m => { if (e.target === m) m.classList.remove('show'); });
+};
+
+refreshFiles();
+</script>
+</body>
+</html>
+"""
+
+EXPIRED_HTML = """
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Session Expired</title>
+<style>
+body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:15px;}
+h1{color:#f85149;}p{color:#8b949e;}
+</style></head>
+<body><h1>⏱ Session Expired</h1><p>Your file manager session has expired.</p><p>Generate a new link from the Telegram bot.</p></body></html>
+"""
+
+
+@app.route("/fm/<token>/")
+def file_manager_index(token):
+    data = validate_token(token)
+    if not data:
+        return EXPIRED_HTML, 401
+    expires_str = data["expires_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
+    return render_template_string(
+        FILE_MANAGER_HTML,
+        token=token,
+        project_name=data["project_name"],
+        expires_at=expires_str,
+    )
+
+
+@app.route("/fm/<token>/api/list")
+def api_list(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    rel_dir = request.args.get("dir", "")
+    try:
+        target = safe_path(data["project_path"], rel_dir)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    if not os.path.isdir(target):
+        return jsonify({"error": "Not a directory"}), 400
+    files = []
+    try:
+        for entry in sorted(os.scandir(target), key=lambda e: (not e.is_dir(), e.name.lower())):
+            if entry.name.startswith(".") and entry.name != ".env":
+                continue
+            files.append({
+                "name": entry.name,
+                "is_dir": entry.is_dir(),
+                "size": entry.stat().st_size if not entry.is_dir() else 0,
+            })
+    except PermissionError:
+        return jsonify({"error": "Permission denied"}), 403
+    return jsonify({"files": files})
+
+
+@app.route("/fm/<token>/api/read")
+def api_read(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    rel_path = request.args.get("path", "")
+    try:
+        target = safe_path(data["project_path"], rel_path)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    if not os.path.isfile(target):
+        return jsonify({"error": "Not a file"}), 400
+    if os.path.getsize(target) > 2 * 1024 * 1024:  # 2MB limit
+        return jsonify({"error": "File too large to edit (>2MB)"}), 400
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"content": content})
+
+
+@app.route("/fm/<token>/api/write", methods=["POST"])
+def api_write(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    payload = request.get_json()
+    if not payload:
+        return jsonify({"error": "Invalid request"}), 400
+    rel_path = payload.get("path", "")
+    content = payload.get("content", "")
+    try:
+        target = safe_path(data["project_path"], rel_path)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    try:
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/fm/<token>/api/mkdir", methods=["POST"])
+def api_mkdir(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    payload = request.get_json()
+    rel_path = payload.get("path", "")
+    try:
+        target = safe_path(data["project_path"], rel_path)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    os.makedirs(target, exist_ok=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/fm/<token>/api/delete", methods=["POST"])
+def api_delete(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    payload = request.get_json()
+    rel_path = payload.get("path", "")
+    try:
+        target = safe_path(data["project_path"], rel_path)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    if not os.path.exists(target):
+        return jsonify({"error": "Path not found"}), 404
+    try:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/fm/<token>/api/rename", methods=["POST"])
+def api_rename(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    payload = request.get_json()
+    old_rel = payload.get("old_path", "")
+    new_rel = payload.get("new_path", "")
+    try:
+        old_target = safe_path(data["project_path"], old_rel)
+        new_target = safe_path(data["project_path"], new_rel)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    if not os.path.exists(old_target):
+        return jsonify({"error": "Source not found"}), 404
+    if os.path.exists(new_target):
+        return jsonify({"error": "Destination already exists"}), 400
+    try:
+        os.rename(old_target, new_target)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/fm/<token>/api/upload", methods=["POST"])
+def api_upload(token):
+    data = validate_token(token)
+    if not data:
+        return jsonify({"error": "Session expired"}), 401
+    rel_dir = request.form.get("dir", "")
+    try:
+        target_dir = safe_path(data["project_path"], rel_dir)
+    except ValueError:
+        return jsonify({"error": "Invalid path"}), 400
+    os.makedirs(target_dir, exist_ok=True)
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "No file"}), 400
+    filename = secure_filename(file.filename)
+    file.save(os.path.join(target_dir, filename))
+    return jsonify({"ok": True, "name": filename})
+
+
+@app.route("/fm/<token>/api/download")
+def api_download(token):
+    data = validate_token(token)
+    if not data:
+        return EXPIRED_HTML, 401
+    rel_path = request.args.get("path", "")
+    try:
+        target = safe_path(data["project_path"], rel_path)
+    except ValueError:
+        abort(400)
+    if not os.path.isfile(target):
+        abort(404)
+    return send_file(target, as_attachment=True)
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "service": "God Madara File Manager", "base_url": os.environ.get("BASE_URL", "not set")})
+
+
+def run_flask(port: int = 8080):
+    """Run Flask in a background thread."""
+    import logging
+    log = logging.getLogger("werkzeug")
+    log.setLevel(logging.ERROR)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+# ==========================================
  

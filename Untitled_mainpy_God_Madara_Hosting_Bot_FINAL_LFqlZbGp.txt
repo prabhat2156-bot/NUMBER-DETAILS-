@@ -2330,6 +2330,477 @@ def validate_token(token: str) -> dict | None:
         return None
 
 
+
+
+
 def safe_path(base: Path, rel: str) -> Path | None:
-    """Resolve a relative path safely within
+    """Resolve a relative path safely within base. Returns None on traversal attempt."""
+    if not rel or rel == ".":
+        return base
+    try:
+        clean_rel = rel.replace("\\", "/").strip("/")
+        resolved = (base / clean_rel).resolve()
+        base_resolved = base.resolve()
+        if not str(resolved).startswith(str(base_resolved)):
+            return None
+        return resolved
+    except Exception:
+        return None
+
+
+def human_size(size_bytes: int) -> str:
+    """Convert bytes to human-readable size string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 ** 2:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 ** 3:
+        return f"{size_bytes / 1024 ** 2:.1f} MB"
+    else:
+        return f"{size_bytes / 1024 ** 3:.1f} GB"
+
+
+EDITABLE_EXTENSIONS = {
+    ".py", ".txt", ".md", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+    ".env", ".sh", ".bash", ".zsh", ".html", ".css", ".js", ".ts", ".jsx",
+    ".tsx", ".xml", ".csv", ".log", ".sql", ".r", ".rb", ".php", ".go",
+    ".java", ".c", ".cpp", ".h", ".hpp", ".rs", ".swift", ".kt", ".scala",
+    ".tf", ".tfvars", ".conf", ".config", ".dockerfile", "",
+}
+
+
+def is_editable(path: Path) -> bool:
+    """Return True if the file can be opened in the text editor."""
+    suffix = path.suffix.lower()
+    if suffix in EDITABLE_EXTENSIONS:
+        return True
+    # Also allow files with no extension (like Dockerfile, Makefile)
+    if not suffix:
+        return True
+    return False
+
+
+def get_token_and_base(token: str):
+    """Validate token and return (token_data, base_path). Aborts 403 on failure."""
+    token_data = validate_token(token)
+    if not token_data:
+        abort(403)
+    project_id = token_data.get("project_id", "")
+    base = PROJECTS_DIR / project_id
+    if not base.exists():
+        abort(404)
+    return token_data, base
+
+
+def build_breadcrumbs(token: str, rel: str, base_label: str = "Home"):
+    """Build breadcrumb list of {label, url} dicts for the given relative path."""
+    crumbs = [{"label": base_label, "url": url_for("browse", token=token)}]
+    if not rel or rel == ".":
+        return crumbs
+    parts = rel.replace("\\", "/").strip("/").split("/")
+    accumulated = ""
+    for part in parts:
+        accumulated = f"{accumulated}/{part}".lstrip("/")
+        crumbs.append({
+            "label": part,
+            "url": url_for("browse", token=token, rel=accumulated),
+        })
+    return crumbs
+
+
+def list_dir(directory: Path, token: str, rel: str) -> list:
+    """Return sorted list of entry dicts for directory listing."""
+    entries = []
+    try:
+        items = sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except PermissionError:
+        return entries
+
+    for item in items:
+        try:
+            stat = item.stat()
+            item_rel = f"{rel}/{item.name}".lstrip("/") if rel else item.name
+            entry = {
+                "name": item.name,
+                "is_dir": item.is_dir(),
+                "size": "—" if item.is_dir() else human_size(stat.st_size),
+                "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                "browse_url": url_for("browse", token=token, rel=item_rel) if item.is_dir() else "",
+                "edit_url": url_for("edit_file", token=token, rel=item_rel) if not item.is_dir() else "",
+                "download_url": url_for("download_file", token=token, rel=item_rel) if not item.is_dir() else "",
+                "editable": is_editable(item) if not item.is_dir() else False,
+            }
+            entries.append(entry)
+        except Exception:
+            continue
+    return entries
+
+
+def token_expiry_str(token_data: dict) -> str:
+    """Return human-readable expiry string from token data."""
+    try:
+        expires_at = datetime.fromisoformat(token_data["expires_at"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        local_dt = expires_at.astimezone()
+        return local_dt.strftime("%Y-%m-%d %H:%M %Z")
+    except Exception:
+        return "Unknown"
+
+
+def get_project_name(token_data: dict) -> str:
+    """Extract a display name for the project from token data."""
+    return token_data.get("project_name") or token_data.get("project_id") or "Project"
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
+@flask_app.route("/")
+def health_check():
+    return "OK", 200
+
+
+@flask_app.route("/health")
+def health():
+    return "OK", 200
+
+
+@flask_app.route("/fm/<token>")
+def browse(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.args.get("rel", "").strip().strip("/")
+        current_dir = safe_path(base, rel)
+        if current_dir is None or not current_dir.exists():
+            flash("Directory not found.", "error")
+            return redirect(url_for("browse", token=token))
+
+        if not current_dir.is_dir():
+            # If someone navigates to a file path, redirect to edit
+            return redirect(url_for("edit_file", token=token, rel=rel))
+
+        project_name = get_project_name(token_data)
+        expiry_str = token_expiry_str(token_data)
+        breadcrumbs = build_breadcrumbs(token, rel, base_label=project_name)
+        entries = list_dir(current_dir, token, rel)
+
+        # Parent path for ".." link
+        parent_path = None
+        if rel:
+            parent_rel = "/".join(rel.replace("\\", "/").strip("/").split("/")[:-1])
+            parent_path = url_for("browse", token=token, rel=parent_rel) if parent_rel else url_for("browse", token=token)
+
+        return render_template_string(
+            BROWSER_TEMPLATE,
+            project_name=project_name,
+            expiry_str=expiry_str,
+            breadcrumbs=breadcrumbs,
+            entries=entries,
+            current_rel=rel,
+            parent_path=parent_path,
+            create_file_url=url_for("create_file", token=token),
+            create_folder_url=url_for("create_folder", token=token),
+            rename_url=url_for("rename_item", token=token),
+            delete_url=url_for("delete_item", token=token),
+            upload_url=url_for("upload_files", token=token),
+        )
+    except Exception as e:
+        logger.error("browse error: %s", e, exc_info=True)
+        flash(f"Error: {e}", "error")
+        return f"<h1>Error</h1><p>{e}</p>", 500
+
+
+@flask_app.route("/fm/<token>/edit")
+def edit_file(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.args.get("rel", "").strip().strip("/")
+        if not rel:
+            flash("No file specified.", "error")
+            return redirect(url_for("browse", token=token))
+
+        file_path = safe_path(base, rel)
+        if file_path is None or not file_path.exists() or not file_path.is_file():
+            flash("File not found.", "error")
+            return redirect(url_for("browse", token=token))
+
+        if not is_editable(file_path):
+            flash("This file type cannot be edited in the browser.", "warning")
+            return redirect(url_for("browse", token=token, rel=str(Path(rel).parent)))
+
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as read_err:
+            flash(f"Could not read file: {read_err}", "error")
+            return redirect(url_for("browse", token=token, rel=str(Path(rel).parent)))
+
+        project_name = get_project_name(token_data)
+        expiry_str = token_expiry_str(token_data)
+        breadcrumbs = build_breadcrumbs(token, rel, base_label=project_name)
+        parent_rel = "/".join(rel.replace("\\", "/").strip("/").split("/")[:-1])
+        back_url = url_for("browse", token=token, rel=parent_rel) if parent_rel else url_for("browse", token=token)
+
+        return render_template_string(
+            EDITOR_TEMPLATE,
+            project_name=project_name,
+            expiry_str=expiry_str,
+            breadcrumbs=breadcrumbs,
+            filename=file_path.name,
+            content=content,
+            save_url=url_for("save_file", token=token, rel=rel),
+            back_url=back_url,
+        )
+    except Exception as e:
+        logger.error("edit_file error: %s", e, exc_info=True)
+        return f"<h1>Error</h1><p>{e}</p>", 500
+
+
+@flask_app.route("/fm/<token>/save", methods=["POST"])
+def save_file(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.args.get("rel", "").strip().strip("/")
+        if not rel:
+            return jsonify({"ok": False, "error": "No file specified"}), 400
+
+        file_path = safe_path(base, rel)
+        if file_path is None:
+            return jsonify({"ok": False, "error": "Invalid path"}), 400
+
+        data = request.get_json(force=True, silent=True)
+        if data is None or "content" not in data:
+            return jsonify({"ok": False, "error": "No content provided"}), 400
+
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(data["content"], encoding="utf-8")
+        logger.info("Saved file: %s", file_path)
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error("save_file error: %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@flask_app.route("/fm/<token>/download")
+def download_file(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.args.get("rel", "").strip().strip("/")
+        if not rel:
+            abort(400)
+        file_path = safe_path(base, rel)
+        if file_path is None or not file_path.exists() or not file_path.is_file():
+            abort(404)
+        return send_file(file_path, as_attachment=True, download_name=file_path.name)
+    except Exception as e:
+        logger.error("download_file error: %s", e, exc_info=True)
+        return f"<h1>Error</h1><p>{e}</p>", 500
+
+
+@flask_app.route("/fm/<token>/create_file", methods=["POST"])
+def create_file(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.form.get("rel", "").strip().strip("/")
+        filename = request.form.get("filename", "").strip()
+        if not filename:
+            flash("Filename cannot be empty.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+        if "/" in filename or "\\" in filename:
+            flash("Filename must not contain slashes.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        current_dir = safe_path(base, rel) if rel else base
+        if current_dir is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token))
+
+        new_file = current_dir / filename
+        if new_file.exists():
+            flash(f"'{filename}' already exists.", "error")
+        else:
+            new_file.parent.mkdir(parents=True, exist_ok=True)
+            new_file.touch()
+            flash(f"File '{filename}' created.", "success")
+
+        return redirect(url_for("browse", token=token, rel=rel))
+    except Exception as e:
+        logger.error("create_file error: %s", e, exc_info=True)
+        flash(f"Error: {e}", "error")
+        return redirect(url_for("browse", token=token))
+
+
+@flask_app.route("/fm/<token>/create_folder", methods=["POST"])
+def create_folder(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.form.get("rel", "").strip().strip("/")
+        foldername = request.form.get("foldername", "").strip()
+        if not foldername:
+            flash("Folder name cannot be empty.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+        if "/" in foldername or "\\" in foldername:
+            flash("Folder name must not contain slashes.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        current_dir = safe_path(base, rel) if rel else base
+        if current_dir is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token))
+
+        new_folder = current_dir / foldername
+        if new_folder.exists():
+            flash(f"'{foldername}' already exists.", "error")
+        else:
+            new_folder.mkdir(parents=True, exist_ok=True)
+            flash(f"Folder '{foldername}' created.", "success")
+
+        return redirect(url_for("browse", token=token, rel=rel))
+    except Exception as e:
+        logger.error("create_folder error: %s", e, exc_info=True)
+        flash(f"Error: {e}", "error")
+        return redirect(url_for("browse", token=token))
+
+
+@flask_app.route("/fm/<token>/rename", methods=["POST"])
+def rename_item(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.form.get("rel", "").strip().strip("/")
+        old_name = request.form.get("old_name", "").strip()
+        new_name = request.form.get("new_name", "").strip()
+
+        if not old_name or not new_name:
+            flash("Names cannot be empty.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+        if "/" in new_name or "\\" in new_name:
+            flash("New name must not contain slashes.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        current_dir = safe_path(base, rel) if rel else base
+        if current_dir is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token))
+
+        old_path = current_dir / old_name
+        new_path = current_dir / new_name
+
+        if not old_path.exists():
+            flash(f"'{old_name}' not found.", "error")
+        elif new_path.exists():
+            flash(f"'{new_name}' already exists.", "error")
+        else:
+            old_path.rename(new_path)
+            flash(f"Renamed '{old_name}' → '{new_name}'.", "success")
+
+        return redirect(url_for("browse", token=token, rel=rel))
+    except Exception as e:
+        logger.error("rename_item error: %s", e, exc_info=True)
+        flash(f"Error: {e}", "error")
+        return redirect(url_for("browse", token=token))
+
+
+@flask_app.route("/fm/<token>/delete", methods=["POST"])
+def delete_item(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.form.get("rel", "").strip().strip("/")
+        name = request.form.get("name", "").strip()
+
+        if not name:
+            flash("No item specified.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        current_dir = safe_path(base, rel) if rel else base
+        if current_dir is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token))
+
+        target = current_dir / name
+        safe_target = safe_path(base, f"{rel}/{name}".lstrip("/"))
+        if safe_target is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        if not target.exists():
+            flash(f"'{name}' not found.", "error")
+        elif target.is_dir():
+            shutil.rmtree(target)
+            flash(f"Folder '{name}' deleted.", "success")
+        else:
+            target.unlink()
+            flash(f"File '{name}' deleted.", "success")
+
+        return redirect(url_for("browse", token=token, rel=rel))
+    except Exception as e:
+        logger.error("delete_item error: %s", e, exc_info=True)
+        flash(f"Error: {e}", "error")
+        return redirect(url_for("browse", token=token))
+
+
+@flask_app.route("/fm/<token>/upload", methods=["POST"])
+def upload_files(token):
+    try:
+        token_data, base = get_token_and_base(token)
+        rel = request.form.get("rel", "").strip().strip("/")
+        current_dir = safe_path(base, rel) if rel else base
+        if current_dir is None:
+            flash("Invalid path.", "error")
+            return redirect(url_for("browse", token=token))
+
+        files = request.files.getlist("files")
+        if not files or all(f.filename == "" for f in files):
+            flash("No files selected.", "warning")
+            return redirect(url_for("browse", token=token, rel=rel))
+
+        uploaded = 0
+        skipped = 0
+        for f in files:
+            if f.filename == "":
+                continue
+            # Sanitize filename — strip directory components
+            safe_name = os.path.basename(f.filename.replace("\\", "/"))
+            if not safe_name:
+                skipped += 1
+                continue
+            dest = current_dir / safe_name
+            # Confirm destination is still within base
+            if safe_path(base, f"{rel}/{safe_name}".lstrip("/")) is None:
+                skipped += 1
+                continue
+            current_dir.mkdir(parents=True, exist_ok=True)
+            f.save(str(dest))
+            uploaded += 1
+
+        if uploaded:
+            flash(f"Uploaded {uploaded} file(s)." + (f" Skipped {skipped}." if skipped else ""), "success")
+        else:
+            flash("No valid files were uploaded.", "warning")
+
+        return redirect(url_for("browse", token=token, rel=rel))
+    except Exception as e:
+        logger.error("upload_files error: %s", e, exc_info=True)
+        flash(f"Upload error: {e}", "error")
+        return redirect(url_for("browse", token=token))
+
+
+# ═══ ENTRY POINT ════════════════════════════════════════════════════════════
+
+def run_flask() -> None:
+    TOKENS_DIR.mkdir(exist_ok=True)
+    PROJECTS_DIR.mkdir(exist_ok=True)
+    logger.info("Starting Flask file manager on port %d…", PORT)
+    flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    TOKENS_DIR.mkdir(parents=True, exist_ok=True)
+
+    flask_thread = threading.Thread(target=run_flask, daemon=True, name="FlaskFileManager")
+    flask_thread.start()
+    logger.info("Flask file manager thread started.")
+
+    telegram_app = build_app()
+    logger.info("Starting Telegram bot polling…")
+    telegram_app.run_polling(allowed_updates=["message", "callback_query"])
 

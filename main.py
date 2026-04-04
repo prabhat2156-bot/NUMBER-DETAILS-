@@ -1,7 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-# FILE 1: bot.py
-# ═══════════════════════════════════════════════════════════════
-
 import os, asyncio, logging, time, sys, shutil, zipfile, re, secrets, base64
 from datetime import datetime, timezone
 from asyncio import create_subprocess_exec

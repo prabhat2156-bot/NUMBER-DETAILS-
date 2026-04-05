@@ -541,10 +541,9 @@ def project_dashboard_kb(user_id: int, project_name: str, auto_restart: bool = T
         ],
         [
             InlineKeyboardButton(ar_label,        callback_data=f"toggle_ar:{pn}"),
-            InlineKeyboardButton("🔐 Env Vars",  callback_data=f"envvars:{pn}"),
+            InlineKeyboardButton("🗑 Delete",    callback_data=f"delete:{pn}"),
         ],
         [
-            InlineKeyboardButton("🗑 Delete",    callback_data=f"delete:{pn}"),
             InlineKeyboardButton("🔙 Back",      callback_data="my_projects"),
         ],
     ])

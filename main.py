@@ -2313,13 +2313,13 @@ async def backup_task():
 # ─────────────────────────────────────────────────────────────
 
 async def keep_alive_task():
-    """Ping own health endpoint every 10 minutes to prevent Render free plan from sleeping."""
+    """Ping own health endpoint every 2 minutes to prevent Render free plan from sleeping."""
     import urllib.request
     health_url = f"{BASE_URL}/health"
     logger.info(f"Keep-alive task started. Pinging {health_url} every 10 minutes.")
 
     while True:
-        await asyncio.sleep(600)  # 10 minutes
+        await asyncio.sleep(120)  # 2 minutes
         try:
             # Run in executor to not block event loop
             loop = asyncio.get_event_loop()

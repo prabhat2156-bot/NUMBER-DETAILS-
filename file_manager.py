@@ -1,26 +1,3 @@
-"""
-God Madara Hosting — Advanced Mobile File Manager
-==================================================
-A single-file Flask file manager with:
-  • Token-based sessions (compatible with bot.py token_store)
-  • Standalone DEV mode  (auto-token if run directly)
-  • Multi-select + bulk delete / download (zip) / move / copy
-  • Cut / Copy / Paste across folders
-  • Sort (name/size/modified, asc/desc)
-  • Show / hide hidden files toggle
-  • Refresh button + pull-to-refresh feel
-  • Image / video / audio / pdf inline preview
-  • CodeMirror editor with save-protection on close
-  • Drag-and-drop upload + per-file progress
-  • Folder zip download
-  • Properties dialog (size / mtime / type / permissions)
-  • Clean minimal dark UI, ripple feedback, bottom-sheet actions
-
-Run standalone:
-    python file_manager.py
-then open  http://localhost:8080/fm/dev/
-"""
-
 import os, time, json, shutil, mimetypes, zipfile, io, secrets, stat
 from pathlib import Path
 from flask import (

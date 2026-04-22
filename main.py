@@ -151,11 +151,16 @@ async def check_premium_expiry(user_id: int):
     """Strip premium if expired."""
     doc = await users_col.find_one({"user_id": user_id})
     if doc and doc.get("premium_expiry"):
-        if doc["premium_expiry"] < datetime.now(timezone.utc):
+        expiry = doc["premium_expiry"]
+        # MongoDB returns naive datetimes — treat them as UTC so the
+        # comparison below doesn't blow up with a TypeError.
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if expiry < datetime.now(timezone.utc):
             await users_col.update_one(
                 {"user_id": user_id},
                 {"$set": {"is_premium": False, "premium_expiry": None}},
-            )
+    )
 
 async def get_user(user_id: int):
     return await users_col.find_one({"user_id": user_id})

@@ -1218,15 +1218,54 @@ async def new_project_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["new_project_files"].append(file_name)
 
-    # Auto-extract zip
-    if file_name.endswith(".zip"):
-        with zipfile.ZipFile(dest, "r") as zf:
-            zf.extractall(pdir)
-        os.remove(dest)
-        await update.message.reply_text(
-            f"📦 `{escape_md(file_name)}` extracted. Send more files or click Done.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        # Auto-extract zip (case-insensitive)
+    if file_name.lower().endswith(".zip"):
+        try:
+            with zipfile.ZipFile(dest, "r") as zf:
+                names = [n for n in zf.namelist() if not n.startswith("__MACOSX")]
+                zf.extractall(pdir, members=names)
+            os.remove(dest)
+
+            # Auto-flatten: if zip had a single root folder, move its contents up
+            top_levels = {n.split("/", 1)[0] for n in names if n and not n.startswith("/")}
+            top_levels.discard("")
+            if len(top_levels) == 1:
+                only_root = next(iter(top_levels))
+                root_path = os.path.join(pdir, only_root)
+                if os.path.isdir(root_path):
+                    for item in os.listdir(root_path):
+                        src = os.path.join(root_path, item)
+                        dst = os.path.join(pdir, item)
+                        if os.path.exists(dst):
+                            if os.path.isdir(dst):
+                                shutil.rmtree(dst)
+                            else:
+                                os.remove(dst)
+                        shutil.move(src, dst)
+                    try:
+                        shutil.rmtree(root_path)
+                    except Exception:
+                        pass
+
+            extracted_count = len([n for n in names if not n.endswith("/")])
+            await update.message.reply_text(
+                f"📦 `{escape_md(file_name)}` extracted ({extracted_count} files).\n"
+                f"Send more files or click *Done Uploading*.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except zipfile.BadZipFile:
+            try: os.remove(dest)
+            except Exception: pass
+            await update.message.reply_text(
+                f"❌ `{escape_md(file_name)}` corrupt zip file hai. Dobara upload karein.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            logger.error(f"Zip extract error for {file_name}: {e}")
+            await update.message.reply_text(
+                f"❌ Extract failed: `{escape_md(str(e))[:200]}`",
+                parse_mode=ParseMode.MARKDOWN,
+            )
     else:
         await update.message.reply_text(
             f"✅ `{escape_md(file_name)}` uploaded. Send more or click Done.",

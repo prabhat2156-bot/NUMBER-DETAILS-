@@ -211,12 +211,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limit_lbl = "∞" if premium else str(FREE_LIMIT)
 
     text = (
-        f"🌟 *Welcome to God Madara Hosting Bot!*\n\n"
+        f"🌟 *Welcome to God Hosting Bot!*\n\n"
         f"👋 Hello {user.first_name}!\n\n"
         f"🚀 *What I can do:*\n"
-        f"• Host Python projects 24/7\n"
+        f"• Host python / java projects 24/7\n"
         f"• Web File Manager — Edit files in browser\n"
-        f"• Auto-install requirements.txt\n"
+        f"• Auto-install requirements.txt/package.json\n"
         f"• Real-time logs & monitoring\n"
         f"• Free: 1 project | Premium: Unlimited\n\n"
         f"📊 *Your Status:*\n"

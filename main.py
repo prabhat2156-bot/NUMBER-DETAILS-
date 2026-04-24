@@ -376,7 +376,7 @@ async def cb_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🚀 *What I can do:*\n"
         f"• Host python / node.js projects\n"
         f"• Web File Manager — Edit files in browser\n"
-        f"• Auto-install requirements.txt/package.json\\n"
+        f"• Auto-install requirements.txt/package.json\n"
         f"• Real-time logs & monitoring\n"
         f"• Free: 1 project | Premium: Unlimited\n\n"
         f"📊 *Your Status:*\n"

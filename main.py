@@ -3439,7 +3439,7 @@ async def auto_restart_on_startup():
                             chat_id=uid,
                             text=(
                                 f"🔄 *Bot Restarted*\n\n"
-                                f"Project `{name}` requirements are currently being installed…\n"
+                                f"Project `{name}` requirements are currently being installing…\n"
                                 f"⏳ your project will start automatically in a few moments."
                             ),
                             parse_mode=ParseMode.MARKDOWN,
@@ -3467,7 +3467,7 @@ async def auto_restart_on_startup():
                                 f"✅ *Project Started*\n\n"
                                 f"Project: `{name}`\n"
                                 f"{req_status}\n"
-                                f"🟢 Project ab running hai!"
+                                f"🟢 your project running now"
                             ),
                             parse_mode=ParseMode.MARKDOWN,
                         )

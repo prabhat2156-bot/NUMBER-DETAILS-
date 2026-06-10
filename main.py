@@ -3897,7 +3897,7 @@ async def keep_alive_task():
     logger.info(f"Keep-alive task started. Pinging {health_url} every 5 minutes.")
 
     while True:
-        await asyncio.sleep(300)
+        await asyncio.sleep(120)
 
         try:
             result = await tokens_col.delete_many(
